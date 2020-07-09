@@ -1,7 +1,11 @@
 pragma solidity ^0.5.0;
 
+import "./SafeMath.sol";
+
 contract RockPaperScissors {
-  enum Move { Rock, Paper, Scissors }
+  using SafeMath for uint256;
+
+  enum Move { Unset, Rock, Paper, Scissors }
   
   struct Game {
     address playerOne;
@@ -15,83 +19,103 @@ contract RockPaperScissors {
   mapping (address => uint) public balances;
   mapping (bytes32 => Game) public games;
   
-  event LogGameCreated(bytes32 gameID, address player, Move movement);
+  event LogGameCreated(bytes32 gameID, address player);
   event LogGameJoined(bytes32 gameID, address player, Move movement);
   event LogGameResult(address winner);
   event LogWagerClaimedBack(bytes32 gameID);
   event LogWithdrawn(address indexed sender, uint amount);
   
-  function newGame(Move movement) public payable {
+  function hashData(Move movement, bytes32 password) public view returns (bytes32) {
+    require(movement != Move.Unset, "You must enter a valid movement.");
+    require(password != bytes32(0), "You must enter a valid password.");
+    return keccak256(abi.encodePacked(address(this), movement, password, msg.sender));
+  }
+  
+  function newGame(bytes32 hash, uint minutesToExpire) public payable {
     require(msg.value > 0, "Send at least 1 wei.");
-
-    bytes32 gameID = keccak256(abi.encodePacked(address(this), now));
-    uint deadline = now + 2 minutes;
-    games[gameID] = Game(msg.sender, address(0), movement, Move(0), msg.value, deadline);
+    require(hash != bytes32(0), "Invalid starting hash.");
+    require(games[hash].playerOne == address(0), "Starting hash already used.");
     
-    emit LogGameCreated(gameID, msg.sender, movement);
+    uint deadline = now.add(minutesToExpire.mul(1 minutes));
+    games[hash] = Game(msg.sender, address(0), Move.Unset, Move.Unset, msg.value, deadline);
+    
+    emit LogGameCreated(hash, msg.sender);
   }
   
   function joinGame(bytes32 gameID, Move movement) public payable {
     require(games[gameID].expiresAt > now, "Game expired.");
     require(games[gameID].playerOne != msg.sender, "Can't play against yourself.");
-    require(msg.value > 0, "Send at least 1 wei.");
     require(msg.value == games[gameID].wagered, "Your wager must be the same value that your adversary.");
     
-    games[gameID].wagered += msg.value;
+    games[gameID].wagered = games[gameID].wagered.add(msg.value);
     games[gameID].playerTwo = msg.sender;
     games[gameID].playerTwoMove = movement;
-    emit LogGameJoined(gameID, msg.sender, movement);
     
-    address winner = getGameResult(gameID);
-    updateBalances(gameID, winner);
+    emit LogGameJoined(gameID, msg.sender, movement);
+  }
+  
+  function play(bytes32 hash, bytes32 password) public {
+    require(games[hash].expiresAt > now, "This game has expired.");
+    require(games[hash].playerTwo != address(0), "Player Two did not entered yet.");
+    require(games[hash].playerOne == msg.sender, "Only Player One can run results.");
+    
+    Move plainMovement = getPlainMovement(hash, password);
+    address winner = getGameResult(hash, plainMovement);
+    updateBalances(hash, winner);
+    clearGame(hash);
+    
     emit LogGameResult(winner);
+  }
+
+  function getPlainMovement(bytes32 hash, bytes32 password) public view returns (Move) {
+    if(hash == hashData(Move.Rock, password))
+      return Move.Rock;
+    else if (hash == hashData(Move.Paper, password))
+      return Move.Paper;
+    else
+      return Move.Scissors;
+  }
+
+  function getGameResult(bytes32 hash, Move playerOneMove) public view returns (address) {
+    if(playerOneMove == games[hash].playerTwoMove)
+      return address(0);
+      
+    if(playerOneMove == Move.Rock)
+      return games[hash].playerTwoMove == Move.Paper ? games[hash].playerTwo : games[hash].playerOne;
+    
+    if(playerOneMove == Move.Paper)
+      return games[hash].playerTwoMove == Move.Scissors ? games[hash].playerTwo : games[hash].playerOne;
+
+    if(playerOneMove == Move.Scissors)
+      return games[hash].playerTwoMove == Move.Rock ? games[hash].playerTwo : games[hash].playerOne;
   }
   
   function updateBalances(bytes32 gameID, address winner) public {
     uint bets = games[gameID].wagered;
+    address playerOne = games[gameID].playerOne;
+    address playerTwo = games[gameID].playerTwo;
+    
     games[gameID].wagered = 0;
-    
+        
     if(winner == address(0)) {
-      uint splitted = bets / 2;
-      balances[games[gameID].playerOne] += splitted;
-      balances[games[gameID].playerTwo] += splitted;
+      uint splitted = bets.div(2);
+      balances[playerOne] = balances[playerOne].add(splitted);
+      balances[playerTwo] = balances[playerTwo].add(splitted);
     } else {
-      balances[winner] += bets;
+      balances[winner] = balances[winner].add(bets);
     }
   }
-  
-  function getGameResult(bytes32 gameID) public view returns (address){
-    Game memory g = games[gameID];
-    
-    Move playerOneMove = g.playerOneMove;
-    Move playerTwoMove = g.playerTwoMove;
-    
-    if(playerOneMove == playerTwoMove) 
-      return address(0);
-      
-    if(playerOneMove == Move.Rock) {
-        if(playerTwoMove == Move.Paper)
-          return g.playerTwo;
-        else
-          return g.playerOne;
-    }
-    
-    if(playerOneMove == Move.Paper) {
-        if(playerTwoMove == Move.Scissors)
-          return g.playerTwo;
-        else
-          return g.playerOne;
-    }
-    
-    if(playerOneMove == Move.Scissors) {
-        if(playerTwoMove == Move.Rock)
-          return g.playerTwo;
-        else
-          return g.playerOne;
-    }
+
+  function clearGame(bytes32 hash) public {
+    games[hash].playerOne = address(0);
+    games[hash].playerTwo = address(0);
+    games[hash].playerOneMove = Move(0);
+    games[hash].playerTwoMove = Move(0);
+    games[hash].wagered = uint(0);
+    games[hash].expiresAt = uint(0);
   }
   
-  function claimWagerExpiredGame(bytes32 gameID) public {
+  function releaseFundsNoSecondPlayer(bytes32 gameID) public {
     require(games[gameID].wagered != 0, "Funds already claimed back.");
     require(games[gameID].expiresAt < now, "Can not claim wager until the game is expired.");
     require(games[gameID].playerTwo == address(0), "You can not claim back funds if your adversary joined the game.");
@@ -99,7 +123,8 @@ contract RockPaperScissors {
     
     uint amount = games[gameID].wagered;
     games[gameID].wagered = 0;
-    balances[msg.sender] += amount;
+    balances[msg.sender] = balances[msg.sender].add(amount);
+    
     emit LogWagerClaimedBack(gameID);
   }
   
