@@ -37,50 +37,58 @@ contract('RockPaperScissors', function(accounts) {
 
   it('should fail minimum value on game creation', async () => {
     await truffleAssert.fails(
-      rockPaperScissors.newGame(validHash, minutesToExpire, { from: alice })
+      rockPaperScissors.newGame(validHash, bob, minutesToExpire, { from: alice })
     );
   })
 
   it('should fail invalid hash on game creation', async () => {
     await truffleAssert.fails(
-      rockPaperScissors.newGame(invalidHash, minutesToExpire, { from: alice, value: 1 })
+      rockPaperScissors.newGame(invalidHash, bob, minutesToExpire, { from: alice, value: 1 })
     );
   })
 
   it('should fail hash already used in another game', async () => {
-    await rockPaperScissors.newGame(validHash, minutesToExpire, { from: alice, value: 1 });
+    await rockPaperScissors.newGame(validHash, bob, minutesToExpire, { from: alice, value: 1 });
     await truffleAssert.fails(
-      rockPaperScissors.newGame(validHash, minutesToExpire, { from: alice, value: 1 })
+      rockPaperScissors.newGame(validHash, bob, minutesToExpire, { from: alice, value: 1 })
     );
   })
 
   it('should create new game', async () => {
     await truffleAssert.passes(
-      rockPaperScissors.newGame(validHash, minutesToExpire, { from: alice, value: 1 })
+      rockPaperScissors.newGame(validHash, bob, minutesToExpire, { from: alice, value: 1 })
     );
   })
   
   it('should emit log on game creation', async () => {
-    const response = await rockPaperScissors.newGame(validHash, minutesToExpire, { from: alice, value: 1 });
+    const response = await rockPaperScissors.newGame(validHash, bob, minutesToExpire, { from: alice, value: 1 });
     assert.strictEqual(response.receipt.logs[0].event, "LogGameCreated");
   })
   
   it('should fail can not play against yourself', async () => {
-    await rockPaperScissors.newGame(validHash, minutesToExpire, { from: alice, value: 1 });
+    await rockPaperScissors.newGame(validHash, alice, minutesToExpire, { from: alice, value: 1 });
     await truffleAssert.fails(
       rockPaperScissors.joinGame(validHash, paper, { from: alice, value: 1 })
     );
   })
   
   it('should fail wager needs to be the same value', async () => {
-    await rockPaperScissors.newGame(validHash, minutesToExpire, { from: alice, value: 1});
+    await rockPaperScissors.newGame(validHash, bob, minutesToExpire, { from: alice, value: 1});
     await truffleAssert.fails(
       rockPaperScissors.joinGame(validHash, paper, { from: bob, value: 2 })
     );
   })
 
+  it('should fail can not join the same game twice', async () => {
+    await rockPaperScissors.newGame(validHash, bob, minutesToExpire, { from: alice, value: 1});
+    await rockPaperScissors.joinGame(validHash, paper, { from: bob, value: 1 });
+    await truffleAssert.fails(
+      rockPaperScissors.joinGame(validHash, paper, { from: bob, value: 1 })
+    );
+  })
+
   it('should join a game and emit log game joined', async () => {
-    await rockPaperScissors.newGame(validHash, minutesToExpire, { from: alice, value: 1});
+    await rockPaperScissors.newGame(validHash, bob, minutesToExpire, { from: alice, value: 1});
     
     const joined = await rockPaperScissors.joinGame(validHash, paper, { from: bob, value: 1 })
     
@@ -90,7 +98,7 @@ contract('RockPaperScissors', function(accounts) {
   it('should not join game cause its already expired', async () => {
     const hash = await rockPaperScissors.hashData(rock, password, { from: alice });
     
-    await rockPaperScissors.newGame(hash, minutesToExpire, { from: alice, value: 1});
+    await rockPaperScissors.newGame(hash, bob, minutesToExpire, { from: alice, value: 1});
     await timeMachine.advanceTime(181);
     await truffleAssert.fails(
       rockPaperScissors.joinGame(hash, paper, { from: bob, value: 1 })
@@ -100,7 +108,7 @@ contract('RockPaperScissors', function(accounts) {
   it('should not play a game cause there is no second player', async () => {
     const hash = await rockPaperScissors.hashData(rock, password, { from: alice });
 
-    await rockPaperScissors.newGame(hash, minutesToExpire, { from: alice, value: 1});
+    await rockPaperScissors.newGame(hash, bob, minutesToExpire, { from: alice, value: 1});
     await truffleAssert.fails(
       rockPaperScissors.play(hash, password, { from: alice })
     );
@@ -109,17 +117,17 @@ contract('RockPaperScissors', function(accounts) {
   it('should not play a game without being player one', async () => {
     const hash = await rockPaperScissors.hashData(rock, password, { from: alice });
 
-    await rockPaperScissors.newGame(hash, minutesToExpire, { from: alice, value: 1});
+    await rockPaperScissors.newGame(hash, bob, minutesToExpire, { from: alice, value: 1});
     await rockPaperScissors.joinGame(hash, paper, { from: bob, value: 1 });
     await truffleAssert.fails(
       rockPaperScissors.play(hash, password, { from: bob })
     );
   })
 
-  it('should not play a game without being player one', async () => {
+  it('should not play game already expired', async () => {
     const hash = await rockPaperScissors.hashData(rock, password, { from: alice });
     
-    await rockPaperScissors.newGame(hash, minutesToExpire, { from: alice, value: 1});
+    await rockPaperScissors.newGame(hash, bob, minutesToExpire, { from: alice, value: 1});
     await timeMachine.advanceTime(181);
     await truffleAssert.fails(
       rockPaperScissors.play(hash, password, { from: alice })
@@ -129,7 +137,7 @@ contract('RockPaperScissors', function(accounts) {
   it('should play a game and win: paper beats rock', async () => {
     const hash = await rockPaperScissors.hashData(rock, password, { from: alice });
     
-    await rockPaperScissors.newGame(hash, minutesToExpire, { from: alice, value: 1});
+    await rockPaperScissors.newGame(hash, bob, minutesToExpire, { from: alice, value: 1});
     await rockPaperScissors.joinGame(hash, paper, { from: bob, value: 1 });
 
     const response = await rockPaperScissors.play(hash, password, { from: alice });
@@ -139,7 +147,7 @@ contract('RockPaperScissors', function(accounts) {
   it('should play a game and win: scissors beats paper', async () => {
     const hash = await rockPaperScissors.hashData(paper, password, { from: alice });
     
-    await rockPaperScissors.newGame(hash, minutesToExpire, { from: alice, value: 1});
+    await rockPaperScissors.newGame(hash, bob,  minutesToExpire, { from: alice, value: 1});
     await rockPaperScissors.joinGame(hash, scissors, { from: bob, value: 1 });
 
     const response = await rockPaperScissors.play(hash, password, { from: alice });
@@ -149,7 +157,7 @@ contract('RockPaperScissors', function(accounts) {
   it('should play a game and lose: rock beats scissors', async () => {
     const hash = await rockPaperScissors.hashData(rock, password, { from: alice });
     
-    await rockPaperScissors.newGame(hash, minutesToExpire, { from: alice, value: 1});
+    await rockPaperScissors.newGame(hash, bob, minutesToExpire, { from: alice, value: 1});
     await rockPaperScissors.joinGame(hash, scissors, { from: bob, value: 1 });
 
     const response = await rockPaperScissors.play(hash, password, { from: alice });
@@ -159,7 +167,7 @@ contract('RockPaperScissors', function(accounts) {
   it('should play a game and tie', async () => {
     const hash = await rockPaperScissors.hashData(rock, password, { from: alice });
     
-    await rockPaperScissors.newGame(hash, minutesToExpire, { from: alice, value: 1});
+    await rockPaperScissors.newGame(hash, bob, minutesToExpire, { from: alice, value: 1});
     await rockPaperScissors.joinGame(hash, rock, { from: bob, value: 1 });
 
     const response = await rockPaperScissors.play(hash, password, { from: alice });
@@ -174,7 +182,7 @@ contract('RockPaperScissors', function(accounts) {
     assert.strictEqual(bobBalance.toString(10), "0");
 
     const hash = await rockPaperScissors.hashData(rock, password, { from: alice });
-    await rockPaperScissors.newGame(hash, minutesToExpire, { from: alice, value: 100 });
+    await rockPaperScissors.newGame(hash, bob, minutesToExpire, { from: alice, value: 100 });
     await rockPaperScissors.joinGame(hash, rock, { from: bob, value: 100 });
     await rockPaperScissors.play(hash, password, { from: alice });
     
@@ -190,7 +198,7 @@ contract('RockPaperScissors', function(accounts) {
     assert.strictEqual(aliceBalance.toString(10), "0");
 
     const hash = await rockPaperScissors.hashData(rock, password, { from: alice });
-    await rockPaperScissors.newGame(hash, minutesToExpire, { from: alice, value: 100 });
+    await rockPaperScissors.newGame(hash, bob, minutesToExpire, { from: alice, value: 100 });
     await rockPaperScissors.joinGame(hash, scissors, { from: bob, value: 100 });
     await rockPaperScissors.play(hash, password, { from: alice });
     
@@ -201,7 +209,7 @@ contract('RockPaperScissors', function(accounts) {
   it('should not release funds back game not expired', async () => {
     const hash = await rockPaperScissors.hashData(rock, password, { from: alice });
 
-    await rockPaperScissors.newGame(hash, minutesToExpire, { from: alice, value: 100 });
+    await rockPaperScissors.newGame(hash, bob, minutesToExpire, { from: alice, value: 100 });
     await truffleAssert.fails(
       rockPaperScissors.releaseFundsNoSecondPlayer(hash)
     );
@@ -210,7 +218,7 @@ contract('RockPaperScissors', function(accounts) {
   it('should not release funds back game has a second player', async () => {
     const hash = await rockPaperScissors.hashData(rock, password, { from: alice });
     
-    await rockPaperScissors.newGame(hash, minutesToExpire, { from: alice, value: 100 });
+    await rockPaperScissors.newGame(hash, bob, minutesToExpire, { from: alice, value: 100 });
     await rockPaperScissors.joinGame(hash, scissors, { from: bob, value: 100 });
     await timeMachine.advanceTime(181);
     await truffleAssert.fails(
@@ -221,7 +229,7 @@ contract('RockPaperScissors', function(accounts) {
   it('should not release funds back if you are not player one', async () => {
     const hash = await rockPaperScissors.hashData(rock, password, { from: alice });
     
-    await rockPaperScissors.newGame(hash, minutesToExpire, { from: alice, value: 100 });
+    await rockPaperScissors.newGame(hash, bob, minutesToExpire, { from: alice, value: 100 });
     await timeMachine.advanceTime(181);
     await truffleAssert.fails(
       rockPaperScissors.releaseFundsNoSecondPlayer(hash, { from: bob })
@@ -233,7 +241,7 @@ contract('RockPaperScissors', function(accounts) {
     assert.strictEqual(aliceBalance.toString(10), "0");
 
     const hash = await rockPaperScissors.hashData(rock, password, { from: alice });
-    await rockPaperScissors.newGame(hash, minutesToExpire, { from: alice, value: 100 });
+    await rockPaperScissors.newGame(hash, bob, minutesToExpire, { from: alice, value: 100 });
     await timeMachine.advanceTime(181);    
     await rockPaperScissors.releaseFundsNoSecondPlayer(hash, { from: alice });
     
