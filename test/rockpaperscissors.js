@@ -5,8 +5,9 @@ const timeMachine = require('ganache-time-traveler');
 
 contract('RockPaperScissors', function(accounts) {
   let rockPaperScissors;
-  const [alice, bob, carol] = accounts;
+  const [alice, bob] = accounts;
   const [unset, rock, paper, scissors] = [0,1,2,3];
+  const { toBN } = web3.utils; 
   const { getBalance } = web3.eth;
   const invalidAddress = "0x0000000000000000000000000000000000000000";
   const invalidHash = "0x0000000000000000000000000000000000000000000000000000000000000000";
@@ -124,12 +125,14 @@ contract('RockPaperScissors', function(accounts) {
     );
   })
 
-  it('should not play game already expired', async () => {
+  it('should add time to game expire after join game', async () => {
     const hash = await rockPaperScissors.hashData(rock, password, { from: alice });
     
     await rockPaperScissors.newGame(hash, bob, minutesToExpire, { from: alice, value: 1});
-    await timeMachine.advanceTime(181);
-    await truffleAssert.fails(
+    await timeMachine.advanceTime(170);
+    await rockPaperScissors.joinGame(hash, paper, { from: bob, value: 1 });
+    await timeMachine.advanceTime(170);
+    await truffleAssert.passes(
       rockPaperScissors.play(hash, password, { from: alice })
     );
   })
@@ -247,6 +250,27 @@ contract('RockPaperScissors', function(accounts) {
     
     const aliceBalanceAfter = await rockPaperScissors.balances(alice);
     assert.strictEqual(aliceBalanceAfter.toString(10), "100");
+  })
+
+  it('should withdraw funds after win a game', async () => {
+    const hash = await rockPaperScissors.hashData(rock, password, { from: alice });
     
+    await rockPaperScissors.newGame(hash, bob, minutesToExpire, { from: alice, value: 50 });
+    await rockPaperScissors.joinGame(hash, scissors, { from: bob, value: 50 });
+    await rockPaperScissors.play(hash, password, { from: alice });
+    
+    const accountBalance = toBN(await getBalance(alice));
+    const stateBalance = toBN(await rockPaperScissors.balances(alice));
+
+    const response = await rockPaperScissors.withdraw({ from: alice });
+    const tx = await web3.eth.getTransaction(response.tx);
+    const txFee = toBN(tx.gasPrice).mul(toBN(response.receipt.gasUsed)).toString(10);
+
+    const accountBalanceUpdated = await getBalance(alice);
+    const stateBalanceUpdated = await rockPaperScissors.balances(alice);
+
+    assert.strictEqual(stateBalance.sub(toBN(100)).toString(10), stateBalanceUpdated.toString(10));
+    assert.strictEqual(accountBalanceUpdated, accountBalance.add(toBN(100).sub(toBN(txFee))).toString(10));
+    assert.strictEqual(stateBalanceUpdated.toString(10), toBN(0).toString(10));
   })
 });

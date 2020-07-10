@@ -13,15 +13,16 @@ contract RockPaperScissors {
     Move playerTwoMove;
     uint wagered;
     uint expiresAt;
+    uint minutesToExpire;
   }
   
   mapping (address => uint) public balances;
   mapping (bytes32 => Game) public games;
   
-  event LogGameCreated(bytes32 gameID, address player);
-  event LogGameJoined(bytes32 gameID, address player, Move movement);
-  event LogGameResult(address winner);
-  event LogWagerClaimedBack(bytes32 gameID, address claimer);
+  event LogGameCreated(bytes32 indexed gameID, address indexed player);
+  event LogGameJoined(bytes32 indexed gameID, address indexed player, Move movement);
+  event LogGameResult(address indexed winner);
+  event LogWagerClaimedBack(bytes32 indexed gameID, address indexed claimer);
   event LogWithdrawn(address indexed sender, uint amount);
   
   function hashData(Move movement, bytes32 password) public view returns (bytes32) {
@@ -33,11 +34,11 @@ contract RockPaperScissors {
   function newGame(bytes32 hash, address playerTwo, uint minutesToExpire) public payable {
     require(msg.value > 0, "Send at least 1 wei.");
     require(hash != bytes32(0), "Invalid starting hash.");
-    require(games[hash].playerOne == address(0), "Starting hash already used.");
     require(playerTwo != address(0), "Invalid address for player two.");
+    require(games[hash].playerOne == address(0), "Starting hash already used.");
     
     uint deadline = now.add(minutesToExpire.mul(1 minutes));
-    games[hash] = Game(msg.sender, playerTwo, Move.Unset, msg.value, deadline);
+    games[hash] = Game(msg.sender, playerTwo, Move.Unset, msg.value, deadline, minutesToExpire);
     
     emit LogGameCreated(hash, msg.sender);
   }
@@ -48,10 +49,11 @@ contract RockPaperScissors {
     require(games[gameID].playerTwo == msg.sender, "You do not have permission to join this game.");
     require(games[gameID].playerTwoMove == Move.Unset, "You can not join the same game two times.");
     require(games[gameID].wagered == msg.value, "Your wager must be the same value that your adversary.");
-    
+
     games[gameID].wagered = games[gameID].wagered.add(msg.value);
     games[gameID].playerTwoMove = movement;
-    
+    games[gameID].expiresAt = now.add(games[gameID].minutesToExpire.mul(1 minutes));
+
     emit LogGameJoined(gameID, msg.sender, movement);
   }
   
