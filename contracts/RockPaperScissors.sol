@@ -13,7 +13,6 @@ contract RockPaperScissors {
     Move playerTwoMove;
     uint wagered;
     uint expiresAt;
-    uint minutesToExpire;
   }
   
   mapping (address => uint) public balances;
@@ -38,7 +37,7 @@ contract RockPaperScissors {
     require(games[hash].playerOne == address(0), "Starting hash already used.");
     
     uint deadline = now.add(minutesToExpire.mul(1 minutes));
-    games[hash] = Game(msg.sender, playerTwo, Move.Unset, msg.value, deadline, minutesToExpire);
+    games[hash] = Game(msg.sender, playerTwo, Move.Unset, msg.value, deadline);
     
     emit LogGameCreated(hash, msg.sender);
   }
@@ -52,7 +51,7 @@ contract RockPaperScissors {
 
     games[gameID].wagered = games[gameID].wagered.add(msg.value);
     games[gameID].playerTwoMove = movement;
-    games[gameID].expiresAt = now.add(games[gameID].minutesToExpire.mul(1 minutes));
+    games[gameID].expiresAt = now.add(3 * (1 minutes));
 
     emit LogGameJoined(gameID, msg.sender, movement);
   }
